@@ -28,15 +28,6 @@
     },
     {
       "type": "build-copy",
-      "name": "gamebryo-savegame-management",
-      "path": "extensions/gamebryo-savegame-management",
-      "condition": "process.platform === 'win32'",
-      "removeModules": ["vortex-api", "nexus-api"],
-      "sources": ["src/**/*.ts", "src/**/*.tsx", "*.json", "webpack.config.js", "typings.custom/index.d.ts"],
-      "copyTo": "{BUILD_DIR}/bundledPlugins/gamebryo-savegame-management"
-    },
-    {
-      "type": "build-copy",
       "name": "gamebryo-test-settings",
       "path": "extensions/gamebryo-test-settings",
       "removeModules": ["vortex-api", "nexus-api"],
