@@ -11,6 +11,8 @@ import { ProcessFeedback } from './ProcessFeedback';
 import { ConditionNotMet } from './ConditionNotMet';
 import { Unchanged } from './Unchanged';
 
+import chalk from 'chalk'; // Ensure the 'chalk' package is installed in your project
+
 const fsP = fs.promises;
 const projectGroups = JSON.parse(fs.readFileSync('./BuildSubprojects.json'));
 const npmcli = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -33,20 +35,29 @@ const globAsync = Promise.promisify(glob);
  * @param {string} errorMsg - The error message to display.
  */
 function printErrorAsGrid(errorMsg) {
+  const topBottomBorder = borderChar.repeat(gridWidth + 2);
+  const paddedMessage = `${borderChar}${paddingChar.repeat(padding)}${chalk.red(
+    errorMsg,
+  )}${paddingChar.repeat(padding)}${borderChar}`; // Highlight error message in red
+
   const borderChar = '*';
   const paddingChar = ' ';
   const padding = 2;
   const messageLength = errorMsg.length;
   const gridWidth = messageLength + padding * 2;
-
-  const topBottomBorder = borderChar.repeat(gridWidth + 2);
-  const paddedMessage = `${borderChar}${paddingChar.repeat(
-    padding,
-  )}${errorMsg}${paddingChar.repeat(padding)}${borderChar}`;
+  
 
   console.log(topBottomBorder);
   console.log(paddedMessage);
   console.log(topBottomBorder);
+}
+
+/**
+ * Prints a success message highlighted in green.
+ * @param {string} successMsg - The success message to display.
+ */
+function printSuccess(successMsg) {
+  console.log(chalk.green(successMsg)); // Highlight success message in green
 }
 
 
