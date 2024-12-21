@@ -107,7 +107,7 @@ module.exports = {
     "max-lines-per-function": [
       "warn",
       {
-        max: 100,
+        max: 300,
         skipComments: true,
         skipBlankLines: true,
       },
@@ -115,7 +115,7 @@ module.exports = {
     "max-len": [
       "warn",
       {
-        code: 200,
+        code: 300,
         comments: 250,
         ignoreUrls: true,
         ignoreStrings: true,
@@ -145,7 +145,7 @@ module.exports = {
         "max-lines-per-function": [
           "warn",
           {
-            max: 200,
+            max: 300,
             skipComments: true,
             skipBlankLines: true,
           },

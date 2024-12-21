@@ -1,40 +1,46 @@
-/**
- * entry point for the main process
- */
-
 import './util/application.electron';
 import getVortexPath from './util/getVortexPath';
 
 import { app, dialog } from 'electron';
 import * as path from 'path';
+import { DEBUG_PORT, HTTP_HEADER_SIZE } from './constants';
 
-const earlyErrHandler = (error) => {
-  if (error.stack.includes('[as dlopen]')) {
-    dialog.showErrorBox(
-      'Vortex failed to start up',
-      `An unexpected error occurred while Vortex was initialising:\n\n${error.message}\n\n`
+import * as sourceMapSupport from 'source-map-support';
+import requireRemap from './util/requireRemap';
+// Produce english error messages (windows only atm), otherwise they don't get
+// grouped correctly when reported through our feedback system
+import * as winapiT from 'winapi-bindings';
 
-      + 'This is often caused by a bad installation of the app, '
-      + 'a security app interfering with Vortex '
-      + 'or a problem with the Microsoft Visual C++ Redistributable installed on your PC. '
-      + 'To solve this issue please try the following:\n\n'
+import Application from './app/Application';
 
-      + '- Wait a moment and try starting Vortex again\n'
-      + '- Reinstall Vortex from the Nexus Mods website\n'
-      + '- Install the latest Microsoft Visual C++ Redistributable (find it using a search engine)\n'
-      + '- Disable anti-virus or other security apps that might interfere and install Vortex again\n\n'
+import type { IPresetStep, IPresetStepCommandLine } from './types/IPreset';
 
-      + 'If the issue persists, please create a thread in our support forum for further assistance.');
-  } else {
-    dialog.showErrorBox('Unhandled error',
-      'Vortex failed to start up. This is usually caused by foreign software (e.g. Anti Virus) '
-      + 'interfering.\n\n' + error.stack);
-  }
-  app.exit(1);
-};
+import commandLine, { relaunch } from './util/commandLine';
+import { sendReportFile, terminate, toError } from './util/errorHandling';
+// ensures tsc includes this dependency
+// required for the side-effect!
+import './util/exeIcon';
+import './util/monkeyPatching';
+import './util/webview';
 
-process.on('uncaughtException', earlyErrHandler);
-process.on('unhandledRejection', earlyErrHandler);
+import * as child_processT from 'child_process';
+import * as fs from './util/fs';
+import presetManager from './util/PresetManager';
+import { handleStartupError } from './error_handling_utils';
+import { NodeLogging } from './util/logfunctions';
+import { WindowAdminService } from './WindowAdminService';
+import { NodeSetup } from './app/NodeSetup';
+
+
+
+
+
+
+
+
+
+process.on('uncaughtException', handleStartupError);
+process.on('unhandledRejection', handleStartupError);
 
 // ensure the cwd is always set to the path containing the exe, otherwise dynamically loaded
 // dlls will not be able to load vc-runtime files shipped with Vortex.
@@ -57,88 +63,97 @@ if (!process.argv.includes('--relaunched')
   app.quit();
 }
 */
-
-import { DEBUG_PORT, HTTP_HEADER_SIZE } from './constants';
-
-import * as sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
-import requireRemap from './util/requireRemap';
 requireRemap();
 
-function setEnv(key: string, value: string, force?: boolean) {
-  if ((process.env[key] === undefined) || force) {
-    process.env[key] = value;
-  }
-}
+NodeSetup.setupEnvironment();
 
-if (process.env.NODE_ENV !== 'development') {
-  setEnv('NODE_ENV', 'production', true);
-} else {
-  // tslint:disable-next-line:no-var-requires
-  const rebuildRequire = require('./util/requireRebuild').default;
-  rebuildRequire();
-}
+WindowAdminService.filterPathOnWindows();
 
-if ((process.platform === 'win32') && (process.env.NODE_ENV !== 'development')) {
-  // On windows dlls may be loaded from directories in the path variable
-  // (which I don't know why you'd ever want that) so I filter path quite aggressively here
-  // to prevent dynamically loaded dlls to be loaded from unexpected locations.
-  // The most common problem this should prevent is the edge dll being loaded from
-  // "Browser Assistant" instead of our own.
-
-  const userPath = (process.env.HOMEDRIVE || 'c:') + (process.env.HOMEPATH || '\\Users');
-  const programFiles = process.env.ProgramFiles ||  'C:\\Program Files';
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const programData = process.env.ProgramData || 'C:\\ProgramData';
-
-  const pathFilter = (envPath: string): boolean => {
-    return !envPath.startsWith(userPath)
-        && !envPath.startsWith(programData)
-        && !envPath.startsWith(programFiles)
-        && !envPath.startsWith(programFilesX86);
-  };
-
-  process.env['PATH_ORIG'] = process.env['PATH'].slice(0);
-  process.env['PATH'] = process.env['PATH'].split(';')
-    .filter(pathFilter).join(';');
-}
-
-// Produce english error messages (windows only atm), otherwise they don't get
-// grouped correctly when reported through our feedback system
-import * as winapiT from 'winapi-bindings';
-
-try {
-  // tslint:disable-next-line:no-var-requires
-  const winapi: typeof winapiT = require('winapi-bindings');
-  winapi?.SetProcessPreferredUILanguages?.(['en-US']);
-} catch (err) {
-  // nop
-}
-
-import {} from './util/requireRebuild';
-
-import Application from './app/Application';
-
-import type { IPresetStep, IPresetStepCommandLine } from './types/IPreset';
-
-import commandLine, { relaunch } from './util/commandLine';
-import { sendReportFile, terminate, toError } from './util/errorHandling';
-// ensures tsc includes this dependency
-import {} from './util/extensionRequire';
-
-// required for the side-effect!
-import './util/exeIcon';
-import './util/monkeyPatching';
-import './util/webview';
-
-import * as child_processT from 'child_process';
-import * as fs from './util/fs';
-import presetManager from './util/PresetManager';
+WindowAdminService.setUILanguageToEnglish();
 
 process.env.Path = process.env.Path + path.delimiter + __dirname;
 
+
+
+
+
+
+
+
+
+/*
+  use this to do first time setup, that is: code to be run
+  only the very first time vortex starts up.
+  This functionality was introduced but then we ended up solving
+  the problem in a different way that's why this is unused currently
+*/
+async function firstTimeInit() {}
+
+const SYNC_FEATURES = [
+  { switch: 'disable-features', value: 'WidgetLayering' },
+  { switch: 'disable-features', value: 'UseEcoQoSForBackgroundProcess' },
+];
+
+const NODE_ENV_DEV_PORT = 'remote-debugging-port';
+const DEFAULT_LOCALE = 'en';
+
+
+
+
+
 let application: Application;
+
+
+
+/**
+ * The main entry point of the application. This function handles the initial
+ * setup, configuration, and execution flow of the application based on
+ * command-line arguments and environment settings. It parses arguments, sets
+ * environment variables, handles GPU configuration, initializes required
+ * modules, and starts the application or executes specific commands if needed.
+ *
+ * @return {Promise<void>} A promise that resolves once the setup and execution
+ * flow is complete, or the application exits due to a specific command-line
+ * argument or error.
+ */
+async function main(): Promise<void> {
+  const mainArgs = parseCommandLineArgs(process.argv);
+
+  if (mainArgs.report) {
+    await sendAndQuit(mainArgs.report);
+    return;
+  }
+
+  updateEnvironmentVariables();
+  configureGPU(mainArgs.disableGPU);
+  applyCommandLineFeatures(SYNC_FEATURES);
+
+  if (mainArgs.run !== undefined) {
+    await executeRunArgument(mainArgs.run);
+    return;
+  }
+
+  if (!app.requestSingleInstanceLock()) {
+    exitDueToInstanceConflict();
+    return;
+  }
+
+  if (!(await setupCommandLinePresets(mainArgs))) {
+    return;
+  }
+
+  await initializeFileSystem();
+
+  setupErrorHandling();
+  enableDebuggingInDevMode();
+
+  initializeElectronRemoteModule();
+  ensureTranslationModule(DEFAULT_LOCALE);
+
+  application = new Application(mainArgs);
+}
 
 const handleError = (error: any) => {
   if (Application.shouldIgnoreError(error)) {
@@ -148,43 +163,54 @@ const handleError = (error: any) => {
   terminate(toError(error), {});
 };
 
-async function firstTimeInit() {
-  // use this to do first time setup, that is: code to be run
-  // only the very first time vortex starts up.
-  // This functionality was introduced but then we ended up solving
-  // the problem in a different way that's why this is unused currently
+
+function parseCommandLineArgs(args: string[]): any {
+  // Assuming `commandLine` handles the parsing
+  return commandLine(args, false);
 }
 
-async function main(): Promise<void> {
-  // important: The following has to be synchronous!
-  let mainArgs = commandLine(process.argv, false);
-  if (mainArgs.report) {
-    return sendReportFile(mainArgs.report)
-      .then(() => {
-        app.quit();
-      });
-  }
 
+
+async function sendAndQuit(report: string): Promise<void> {
+  await sendReportFile(report);
+  app.quit();
+}
+
+
+
+function updateEnvironmentVariables(): void {
   const NODE_OPTIONS = process.env.NODE_OPTIONS || '';
-  process.env.NODE_OPTIONS = NODE_OPTIONS
-    + ` --max-http-header-size=${HTTP_HEADER_SIZE}`
-    + ' --no-force-async-hooks-checks';
+  process.env.NODE_OPTIONS = `${NODE_OPTIONS} --max-http-header-size=${HTTP_HEADER_SIZE} --no-force-async-hooks-checks`;
+}
 
-  if (mainArgs.disableGPU) {
-    app.disableHardwareAcceleration();
-    app.commandLine.appendSwitch('--disable-software-rasterizer');
-    app.commandLine.appendSwitch('--disable-gpu');
-  }
 
-  app.commandLine.appendSwitch('disable-features', 'WidgetLayering');
-  app.commandLine.appendSwitch('disable-features', 'UseEcoQoSForBackgroundProcess');
 
-  // --run has to be evaluated *before* we request the single instance lock!
-  if (mainArgs.run !== undefined) {
-    // Vortex here acts only as a trampoline (probably elevated) to start
-    // some other process
-    const cp: typeof child_processT = require('child_process');
-    cp.spawn(process.execPath, [ mainArgs.run ], {
+function configureGPU(enableGPU: boolean): void {
+  if (enableGPU) return;
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('--disable-software-rasterizer');
+  app.commandLine.appendSwitch('--disable-gpu');
+}
+
+
+
+
+function applyCommandLineFeatures(
+  features: { switch: string; value: string }[],
+): void {
+  features.forEach(feature =>
+    app.commandLine.appendSwitch(feature.switch, feature.value),
+  );
+}
+
+
+
+
+async function executeRunArgument(scriptPath: string): Promise<void> {
+  const childProcess = require('child_process') as typeof child_processT;
+
+  childProcess
+    .spawn(process.execPath, [scriptPath], {
       env: {
         ...process.env,
         ELECTRON_RUN_AS_NODE: '1',
@@ -192,76 +218,97 @@ async function main(): Promise<void> {
       stdio: 'inherit',
       detached: true,
     })
-    .on('error', err => {
-      // TODO: In practice we have practically no information about what we're running
-      //       at this point
-      dialog.showErrorBox('Failed to run script', err.message);
+    .on('error', error => {
+      dialog.showErrorBox('Failed to run script', error.message);
     });
-    // quit this process, the new one is detached
-    app.quit();
-    return;
-  }
 
-  if (!app.requestSingleInstanceLock()) {
-    app.disableHardwareAcceleration();
-    app.commandLine.appendSwitch('--in-process-gpu');
-    app.commandLine.appendSwitch('--disable-software-rasterizer');
-    app.quit();
-    return;
-  }
+  app.quit();
+}
 
-  // async code only allowed from here on out
 
-  if (!presetManager.now('commandline', (step: IPresetStep): Promise<void> => {
-    (step as IPresetStepCommandLine).arguments.forEach(arg => {
-      mainArgs[arg.key] = arg.value ?? true;
-    });
-    return Promise.resolve();
-  })) {
-    // if the first step was not a command-line instruction but we encounter one
-    // further down the preset queue, Vortex has to restart to process it.
-    // this is only relevant for the main process, if the renderer process encounters
-    // this it will have its own handler and can warn the user the restart is coming
+
+
+function exitDueToInstanceConflict(): void {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('--in-process-gpu');
+  app.commandLine.appendSwitch('--disable-software-rasterizer');
+  app.quit();
+}
+
+
+
+
+async function setupCommandLinePresets(mainArgs: any): Promise<boolean> {
+  const presetProcessed = presetManager.now(
+    'commandline',
+    (step: IPresetStep): Promise<void> => {
+      (step as IPresetStepCommandLine).arguments.forEach(arg => {
+        mainArgs[arg.key] = arg.value ?? true;
+      });
+      return Promise.resolve();
+    },
+  );
+
+  if (!presetProcessed) {
     presetManager.on('commandline', (): Promise<void> => {
-      // return a promise that doesn't finish
       relaunch();
       return new Promise(() => {
-        // nop
+        /* block indefinitely */
       });
     });
   }
 
+  return presetProcessed;
+}
+
+
+
+async function initializeFileSystem(): Promise<void> {
   try {
     await fs.statAsync(getVortexPath('userData'));
-  } catch (err) {
+  } catch {
     await firstTimeInit();
   }
+}
 
+
+
+function setupErrorHandling(): void {
   process.on('uncaughtException', handleError);
   process.on('unhandledRejection', handleError);
+}
 
-  if ((process.env.NODE_ENV === 'development')
-      && (!app.commandLine.hasSwitch('remote-debugging-port'))) {
-    app.commandLine.appendSwitch('remote-debugging-port', DEBUG_PORT);
+
+
+
+function enableDebuggingInDevMode(): void {
+  if (
+    process.env.NODE_ENV === 'development' &&
+    !app.commandLine.hasSwitch(NODE_ENV_DEV_PORT)
+  ) {
+    NodeLogging.printSuccess('Enabling debugging on port' + DEBUG_PORT);
+    app.commandLine.appendSwitch(NODE_ENV_DEV_PORT, DEBUG_PORT);
   }
+}
 
-  // tslint:disable-next-line:no-submodule-imports
+
+
+
+function initializeElectronRemoteModule(): void {
   require('@electron/remote/main').initialize();
+}
 
-  let fixedT = require('i18next').getFixedT('en');
+
+
+function ensureTranslationModule(defaultLocale: string): void {
+  let fixedT = require('i18next').getFixedT(defaultLocale);
+
   try {
     fixedT('dummy');
-  } catch (err) {
-    fixedT = input => input;
+  } catch {
+    // Fallback for incorrect i18n initialization
+    fixedT = (input: string) => input;
   }
-
-  /* allow application controlled scaling
-  if (process.platform === 'win32') {
-    app.commandLine.appendSwitch('high-dpi-support', 'true');
-    app.commandLine.appendSwitch('force-device-scale-factor', '1');
-  }
-  */
-  application = new Application(mainArgs);
 }
 
 main();
