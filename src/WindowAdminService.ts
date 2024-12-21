@@ -5,6 +5,7 @@ import path from 'path';
 import { Result } from './models/result';
 import { IParameters } from './util/commandLine';
 import { app } from 'electron';
+import * as winapiT from 'winapi-bindings';
 
 export class WindowAdminService {
 
@@ -74,8 +75,42 @@ export class WindowAdminService {
     );
   }
 
+  static setUILanguageToEnglish(): void {
+    try {
+      // tslint:disable-next-line:no-var-requires
+      const winapi: typeof winapiT = require('winapi-bindings');
+      winapi?.SetProcessPreferredUILanguages?.(['en-US']);
+    } catch (err) {
+      // nop
+    }
+  }
 
 
+  static filterPathOnWindows(): void {
+    if (process.platform === 'win32' && process.env.NODE_ENV !== 'development') {
+      const userPath =
+        (process.env.HOMEDRIVE || 'c:') + (process.env.HOMEPATH || '\\Users');
+      const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+      const programFilesX86 =
+        process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+      const programData = process.env.ProgramData || 'C:\\ProgramData';
+
+      const pathFilter = (envPath: string): boolean => {
+        return (
+          !envPath.startsWith(userPath) &&
+          !envPath.startsWith(programData) &&
+          !envPath.startsWith(programFiles) &&
+          !envPath.startsWith(programFilesX86)
+        );
+      };
+
+      process.env['PATH_ORIG'] = process.env['PATH'].slice(0);
+      process.env['PATH'] = process.env['PATH']
+        .split(';')
+        .filter(pathFilter)
+        .join(';');
+    }
+  }
 
 
 

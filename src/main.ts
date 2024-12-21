@@ -1,7 +1,3 @@
-/**
- * entry point for the main process
- */
-
 import './util/application.electron';
 import getVortexPath from './util/getVortexPath';
 
@@ -22,7 +18,6 @@ import type { IPresetStep, IPresetStepCommandLine } from './types/IPreset';
 import commandLine, { relaunch } from './util/commandLine';
 import { sendReportFile, terminate, toError } from './util/errorHandling';
 // ensures tsc includes this dependency
-
 // required for the side-effect!
 import './util/exeIcon';
 import './util/monkeyPatching';
@@ -32,6 +27,17 @@ import * as child_processT from 'child_process';
 import * as fs from './util/fs';
 import presetManager from './util/PresetManager';
 import { handleStartupError } from './error_handling_utils';
+import { NodeLogging } from './util/logfunctions';
+import { WindowAdminService } from './WindowAdminService';
+import { NodeSetup } from './app/NodeSetup';
+
+
+
+
+
+
+
+
 
 process.on('uncaughtException', handleStartupError);
 process.on('unhandledRejection', handleStartupError);
@@ -61,74 +67,29 @@ sourceMapSupport.install();
 
 requireRemap();
 
-function setEnv(key: string, value: string, force?: boolean) {
-  if (process.env[key] === undefined || force) {
-    process.env[key] = value;
-  }
-}
+NodeSetup.setupEnvironment();
 
-function setupEnvironment(): void {
-  if (process.env.NODE_ENV !== 'development') {
-    setEnv('NODE_ENV', 'production', true);
-  } else {
-    // tslint:disable-next-line:no-var-requires
-    const rebuildRequire = require('./util/requireRebuild').default;
-    rebuildRequire();
-  }
-}
+WindowAdminService.filterPathOnWindows();
 
-setupEnvironment();
-
-if ((process.platform === 'win32') && (process.env.NODE_ENV !== 'development')) {
-  // On windows dlls may be loaded from directories in the path variable
-  // (which I don't know why you'd ever want that) so I filter path quite aggressively here
-  // to prevent dynamically loaded dlls to be loaded from unexpected locations.
-  // The most common problem this should prevent is the edge dll being loaded from
-  // "Browser Assistant" instead of our own.
-
-  const userPath = (process.env.HOMEDRIVE || 'c:') + (process.env.HOMEPATH || '\\Users');
-  const programFiles = process.env.ProgramFiles ||  'C:\\Program Files';
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const programData = process.env.ProgramData || 'C:\\ProgramData';
-
-  const pathFilter = (envPath: string): boolean => {
-    return !envPath.startsWith(userPath)
-        && !envPath.startsWith(programData)
-        && !envPath.startsWith(programFiles)
-        && !envPath.startsWith(programFilesX86);
-  };
-
-  process.env['PATH_ORIG'] = process.env['PATH'].slice(0);
-  process.env['PATH'] = process.env['PATH'].split(';')
-    .filter(pathFilter).join(';');
-}
-
-try {
-  // tslint:disable-next-line:no-var-requires
-  const winapi: typeof winapiT = require('winapi-bindings');
-  winapi?.SetProcessPreferredUILanguages?.(['en-US']);
-} catch (err) {
-  // nop
-}
+WindowAdminService.setUILanguageToEnglish();
 
 process.env.Path = process.env.Path + path.delimiter + __dirname;
 
-let application: Application;
 
-const handleError = (error: any) => {
-  if (Application.shouldIgnoreError(error)) {
-    return;
-  }
 
-  terminate(toError(error), {});
-};
 
-async function firstTimeInit() {
-  // use this to do first time setup, that is: code to be run
-  // only the very first time vortex starts up.
-  // This functionality was introduced but then we ended up solving
-  // the problem in a different way that's why this is unused currently
-}
+
+
+
+
+
+/*
+  use this to do first time setup, that is: code to be run
+  only the very first time vortex starts up.
+  This functionality was introduced but then we ended up solving
+  the problem in a different way that's why this is unused currently
+*/
+async function firstTimeInit() {}
 
 const SYNC_FEATURES = [
   { switch: 'disable-features', value: 'WidgetLayering' },
@@ -137,6 +98,14 @@ const SYNC_FEATURES = [
 
 const NODE_ENV_DEV_PORT = 'remote-debugging-port';
 const DEFAULT_LOCALE = 'en';
+
+
+
+
+
+let application: Application;
+
+
 
 /**
  * The main entry point of the application. This function handles the initial
@@ -186,20 +155,35 @@ async function main(): Promise<void> {
   application = new Application(mainArgs);
 }
 
+const handleError = (error: any) => {
+  if (Application.shouldIgnoreError(error)) {
+    return;
+  }
+
+  terminate(toError(error), {});
+};
+
+
 function parseCommandLineArgs(args: string[]): any {
   // Assuming `commandLine` handles the parsing
   return commandLine(args, false);
 }
+
+
 
 async function sendAndQuit(report: string): Promise<void> {
   await sendReportFile(report);
   app.quit();
 }
 
+
+
 function updateEnvironmentVariables(): void {
   const NODE_OPTIONS = process.env.NODE_OPTIONS || '';
   process.env.NODE_OPTIONS = `${NODE_OPTIONS} --max-http-header-size=${HTTP_HEADER_SIZE} --no-force-async-hooks-checks`;
 }
+
+
 
 function configureGPU(enableGPU: boolean): void {
   if (enableGPU) return;
@@ -208,27 +192,41 @@ function configureGPU(enableGPU: boolean): void {
   app.commandLine.appendSwitch('--disable-gpu');
 }
 
-function applyCommandLineFeatures(features: { switch: string, value: string }[]): void {
+
+
+
+function applyCommandLineFeatures(
+  features: { switch: string; value: string }[],
+): void {
   features.forEach(feature =>
-    app.commandLine.appendSwitch(feature.switch, feature.value)
+    app.commandLine.appendSwitch(feature.switch, feature.value),
   );
 }
 
-async function executeRunArgument(runPath: string): Promise<void> {
-  const cp = require('child_process') as typeof child_processT;
-  cp.spawn(process.execPath, [runPath], {
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-    },
-    stdio: 'inherit',
-    detached: true,
-  }).on('error', err => {
-    dialog.showErrorBox('Failed to run script', err.message);
-  });
+
+
+
+async function executeRunArgument(scriptPath: string): Promise<void> {
+  const childProcess = require('child_process') as typeof child_processT;
+
+  childProcess
+    .spawn(process.execPath, [scriptPath], {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+      },
+      stdio: 'inherit',
+      detached: true,
+    })
+    .on('error', error => {
+      dialog.showErrorBox('Failed to run script', error.message);
+    });
 
   app.quit();
 }
+
+
+
 
 function exitDueToInstanceConflict(): void {
   app.disableHardwareAcceleration();
@@ -237,23 +235,33 @@ function exitDueToInstanceConflict(): void {
   app.quit();
 }
 
+
+
+
 async function setupCommandLinePresets(mainArgs: any): Promise<boolean> {
-  const presetProcessed = presetManager.now('commandline', (step: IPresetStep): Promise<void> => {
-    (step as IPresetStepCommandLine).arguments.forEach(arg => {
-      mainArgs[arg.key] = arg.value ?? true;
-    });
-    return Promise.resolve();
-  });
+  const presetProcessed = presetManager.now(
+    'commandline',
+    (step: IPresetStep): Promise<void> => {
+      (step as IPresetStepCommandLine).arguments.forEach(arg => {
+        mainArgs[arg.key] = arg.value ?? true;
+      });
+      return Promise.resolve();
+    },
+  );
 
   if (!presetProcessed) {
     presetManager.on('commandline', (): Promise<void> => {
       relaunch();
-      return new Promise(() => { /* block indefinitely */ });
+      return new Promise(() => {
+        /* block indefinitely */
+      });
     });
   }
 
   return presetProcessed;
 }
+
+
 
 async function initializeFileSystem(): Promise<void> {
   try {
@@ -263,20 +271,34 @@ async function initializeFileSystem(): Promise<void> {
   }
 }
 
+
+
 function setupErrorHandling(): void {
   process.on('uncaughtException', handleError);
   process.on('unhandledRejection', handleError);
 }
 
+
+
+
 function enableDebuggingInDevMode(): void {
-  if (process.env.NODE_ENV === 'development' && !app.commandLine.hasSwitch(NODE_ENV_DEV_PORT)) {
+  if (
+    process.env.NODE_ENV === 'development' &&
+    !app.commandLine.hasSwitch(NODE_ENV_DEV_PORT)
+  ) {
+    NodeLogging.printSuccess('Enabling debugging on port' + DEBUG_PORT);
     app.commandLine.appendSwitch(NODE_ENV_DEV_PORT, DEBUG_PORT);
   }
 }
 
+
+
+
 function initializeElectronRemoteModule(): void {
   require('@electron/remote/main').initialize();
 }
+
+
 
 function ensureTranslationModule(defaultLocale: string): void {
   let fixedT = require('i18next').getFixedT(defaultLocale);
