@@ -82,12 +82,16 @@ function main(args) {
 
   const globalFeedback = new ProcessFeedback('global');
   const buildType = args._[0];
+  printSuccess('Build Arguments:')
+  console.table(args)
   setupEnvironment(buildType);
 
   const buildStateFilePath = `./BuildState_${buildType}.json`;
   const buildState = loadBuildState(buildStateFilePath);
 
   const failed = false;
+  printSuccess("Starting to process projects")
+  console.table(projectGroups);
 
   return Promise.each(projectGroups, projects =>
     processProjectGroup(
