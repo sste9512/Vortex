@@ -10,8 +10,9 @@ import vm from 'vm';
 import { ProcessFeedback } from './ProcessFeedback.js';
 import { ConditionNotMet } from './ConditionNotMet.js';
 import { Unchanged } from './Unchanged.js';
+import { printErrorAsGrid, printSuccess } from './logfunctions.js';
 
-import chalk from 'chalk'; // Ensure the 'chalk' package is installed in your project
+
 
 const fileStream = fs;
 
@@ -32,37 +33,7 @@ const globAsync = Promise.promisify(glob.globStream);
 
 
 
-/**
- * Prints an error message as a grid.
- * @param {string} errorMsg - The error message to display.
- */
-function printErrorAsGrid(errorMsg) {
-  const topBottomBorder = borderChar.repeat(gridWidth + 2);
-  const paddedMessage = `${borderChar}${paddingChar.repeat(padding)}${chalk.red(
-    errorMsg,
-  )}${paddingChar.repeat(padding)}${borderChar}`; // Highlight error message in red
 
-  const borderChar = '*';
-  const paddingChar = ' ';
-  const padding = 2;
-  const messageLength = errorMsg.length;
-  const gridWidth = messageLength + padding * 2;
-
-  console.log(topBottomBorder);
-  console.log(paddedMessage);
-  console.log(topBottomBorder);
-}
-
-
-
-
-/**
- * Prints a success message highlighted in green.
- * @param {string} successMsg - The success message to display.
- */
-function printSuccess(successMsg) {
-  console.log(chalk.green(successMsg)); // Highlight success message in green
-}
 
 
 
@@ -75,6 +46,8 @@ function printSuccess(successMsg) {
  * @return {Promise<number>} A promise that resolves with 0 if the process completes successfully, or 1 if there is a failure.
  */
 function main(args) {
+
+
   if (args.length === 0) {
     console.error('No command line parameters specified');
     return Promise.reject(1);
@@ -105,6 +78,9 @@ function main(args) {
   ).then(() => (failed ? 1 : 0));
 }
 
+
+
+
 /**
  * Sets up the appropriate environment variables for the build type.
  * @param {string} buildType - The type of the build ('app', 'out', etc.).
@@ -112,6 +88,10 @@ function main(args) {
 function setupEnvironment(buildType) {
   process.env.TARGET_ENV = buildType === 'app' ? 'production' : 'development';
 }
+
+
+
+
 
 /**
  * Loads the build state from a specified file, falling back to an empty object on error.
@@ -183,6 +163,9 @@ function shouldProcessProject(project, buildType) {
     process.env.VORTEX_VARIANT === project.variant
   );
 }
+
+
+
 
 
 
