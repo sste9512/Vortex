@@ -28,7 +28,7 @@ import * as fs from './util/fs';
 import presetManager from './util/PresetManager';
 import { handleStartupError } from './error_handling_utils';
 import { NodeLogging } from './util/logfunctions';
-import { WindowAdminService } from './WindowAdminService';
+import { WindowAdminService } from './window-admin-service';
 import { NodeSetup } from './app/NodeSetup';
 
 
