@@ -76,8 +76,11 @@ const ARG_COUNTS = {
 // arguments so since we don't have positional arguments and as long as we know which
 // switches expect an argument and as long as the
 // command line passed in is valid, we should be able to reconstruct it.
+
 function electronIsShitArgumentSort(argv: string[]): string[] {
-  const firstArgumentIdx = argv.findIndex((arg, idx) => (idx > 1) && !arg.startsWith('-'));
+  const firstArgumentIdx = argv.findIndex(
+    (arg, idx) => idx > 1 && !arg.startsWith('-'),
+  );
   const switches = argv.slice(1, firstArgumentIdx - 1);
   const args = argv.slice(firstArgumentIdx);
   let nextArg = 0;
@@ -107,32 +110,28 @@ function electronIsShitArgumentSort(argv: string[]): string[] {
  * I think we are going to need this to transform what epic sends us which we can't help into
  * something that our commander.js library is going to parse successfully without going crazy
  * and replacing the parsing library.
- * 
+ *
  * I think we are hitting walls atm with having only a single hyphen but with a word and a =
  */
-function transformEpicArguments(argv: string[]):string[] {
-
+function transformEpicArguments(argv: string[]): string[] {
   var epicParameterSwaps = {
-    "-AUTH_LOGIN": "--epic-auth-login",
-    "-AUTH_PASSWORD": "--epic-auth-password",
-    "-AUTH_TYPE": "--epic-auth-type",
-    "-epicapp": "--epic-app",
-    "-epicenv": "--epic-env",
-    "-EpicPortal": "--epic-portal",
-    "-epicusername": "--epic-username",
-    "-epicuserid": "--epic-userid",
-    "-epiclocale": "--epic-locale",
-    "-epicsandboxid": "--epic-sandboxid",
+    '-AUTH_LOGIN': '--epic-auth-login',
+    '-AUTH_PASSWORD': '--epic-auth-password',
+    '-AUTH_TYPE': '--epic-auth-type',
+    '-epicapp': '--epic-app',
+    '-epicenv': '--epic-env',
+    '-EpicPortal': '--epic-portal',
+    '-epicusername': '--epic-username',
+    '-epicuserid': '--epic-userid',
+    '-epiclocale': '--epic-locale',
+    '-epicsandboxid': '--epic-sandboxid',
   };
 
-  var resultArr = argv.map((element) => {
-
-
+  var resultArr = argv.map(element => {
     for (const key in epicParameterSwaps) {
-
       if (element.indexOf(key) !== -1) {
         return element.replace(key, epicParameterSwaps[key]);
-      } 
+      }
     }
     return element;
   });
@@ -140,9 +139,11 @@ function transformEpicArguments(argv: string[]):string[] {
   return resultArr;
 }
 
-function parseCommandline(argv: string[], electronIsShitHack: boolean): IParameters {
-
-  // lets look and replace epic stuff?!  
+function parseCommandline(
+  argv: string[],
+  electronIsShitHack: boolean,
+): IParameters {
+  // lets look and replace epic stuff?!
   argv = transformEpicArguments(argv);
 
   if (!argv[0].includes('electron.exe')) {
@@ -164,34 +165,64 @@ function parseCommandline(argv: string[], electronIsShitHack: boolean): IParamet
   const commandLine = program
     .command('Vortex')
     .version(version)
-    .option('-d, --download <url>', 'Start downloadling the specified url '
-                                  + '(any supported protocol like nxm:, https:, ...).')
-    .option('-i, --install <url>', 'Start downloadling & installing the specified url '
-                                  + '(any supported protocol like nxm:, https:, ...).')
-    .option('--install-extension <id>', 'Start downloadling & installing the specified '
-                                       + 'vortex extension. id can be "modId:<number>".')
-    .option('-g, --get <path>', 'Print the state variable at the specified path and quit. '
-                              + 'This can be used repeatedly to print multiple items',
-            collect)
-    .option('-s, --set <path=value>', 'Change a value in the state. Please be very careful '
-                                      + 'with this, incorrect use will break Vortex and you may '
-                                      + 'lose data', assign)
+    .option(
+      '-d, --download <url>',
+      'Start downloadling the specified url ' +
+        '(any supported protocol like nxm:, https:, ...).',
+    )
+    .option(
+      '-i, --install <url>',
+      'Start downloadling & installing the specified url ' +
+        '(any supported protocol like nxm:, https:, ...).',
+    )
+    .option(
+      '--install-extension <id>',
+      'Start downloadling & installing the specified ' +
+        'vortex extension. id can be "modId:<number>".',
+    )
+    .option(
+      '-g, --get <path>',
+      'Print the state variable at the specified path and quit. ' +
+        'This can be used repeatedly to print multiple items',
+      collect,
+    )
+    .option(
+      '-s, --set <path=value>',
+      'Change a value in the state. Please be very careful ' +
+        'with this, incorrect use will break Vortex and you may ' +
+        'lose data',
+      assign,
+    )
     .option('--del <path>', 'Remove a value in state', collect)
-    .option('--user-data <path>', 'Starts Vortex with a custom directory for the user data. '
-                                  + 'Only use if you know what you\'re doing.')
+    .option(
+      '--user-data <path>',
+      'Starts Vortex with a custom directory for the user data. ' +
+        "Only use if you know what you're doing.",
+    )
     .option('--start-minimized', 'Starts Vortex in the task bar')
     .option('--game <game id>', 'Starts Vortex with a different game enabled')
     .option('--run <path>', 'Execute the js program instead of Vortex itself.')
     .option('--report <path>', 'Send an error report. For internal use')
     .option('--restore <path>', 'Restore a state backup')
-    .option('--merge <path>', 'Merge a state backup. Unlike restore, the content of the specified '
-                              + 'state file will be merged into the existing state.')
-    .option('--shared', 'Used in conjunction with set, get or del, this will access the database'
-                                       + 'in the shared location instead of the per-user one')
-    .option('--max-memory <size in MB>', 'Maximum amount of memory Vortex may use in MB '
-                                       + '(defaults to 4096)')
+    .option(
+      '--merge <path>',
+      'Merge a state backup. Unlike restore, the content of the specified ' +
+        'state file will be merged into the existing state.',
+    )
+    .option(
+      '--shared',
+      'Used in conjunction with set, get or del, this will access the database' +
+        'in the shared location instead of the per-user one',
+    )
+    .option(
+      '--max-memory <size in MB>',
+      'Maximum amount of memory Vortex may use in MB ' + '(defaults to 4096)',
+    )
     .option('--inspector', 'Start Vortex with the chrome inspector opened')
-    .option('--profile <profile id>', 'Start Vortex with a specific profile active')
+    .option(
+      '--profile <profile id>',
+      'Start Vortex with a specific profile active',
+    )
     .option('--epic-auth-login <login>')
     .option('--epic-auth-password <password>')
     .option('--epic-auth-type <type>')
@@ -204,14 +235,14 @@ function parseCommandline(argv: string[], electronIsShitHack: boolean): IParamet
     .option('--epic-sandboxid <sandboxid>')
     // allow unknown options since they may be interpreted by electron/node
     .allowUnknownOption(true)
-    .parse(argv || []).opts() as IParameters;
+    .parse(argv || [])
+    .opts() as IParameters;
 
   return {
     ...startupSettings,
     ...commandLine,
   };
 }
-
 
 // arguments that should be dropped when restarting the application
 const SKIP_ARGS = {
@@ -233,8 +264,8 @@ export function filterArgs(input: string[]): string[] {
 
   input.forEach((arg, idx) => {
     if (skipCount > 0) {
-      skipCount --;
-    } else if (idx === 0)  {
+      skipCount--;
+    } else if (idx === 0) {
       // skip
     } else if (SKIP_ARGS[arg] !== undefined) {
       skipCount = SKIP_ARGS[arg];
@@ -247,7 +278,7 @@ export function filterArgs(input: string[]): string[] {
 }
 
 function relaunchImpl(args?: string[]) {
-  app.relaunch({ args: [...filterArgs(process.argv), ...(args || []) ] });
+  app.relaunch({ args: [...filterArgs(process.argv), ...(args || [])] });
   app.quit();
 }
 

@@ -1,3 +1,5 @@
+
+import "reflect-metadata";
 import './util/application.electron';
 import getVortexPath from './util/getVortexPath';
 
@@ -30,6 +32,7 @@ import { handleStartupError } from './error_handling_utils';
 import { NodeLogging } from './util/logfunctions';
 import { WindowAdminService } from './window-admin-service';
 import { NodeSetup } from './app/NodeSetup';
+import { container } from 'tsyringe';
 
 
 
@@ -119,6 +122,9 @@ let application: Application;
  * argument or error.
  */
 async function main(): Promise<void> {
+
+
+
   const mainArgs = parseCommandLineArgs(process.argv);
 
   if (mainArgs.report) {
@@ -151,8 +157,9 @@ async function main(): Promise<void> {
 
   initializeElectronRemoteModule();
   ensureTranslationModule(DEFAULT_LOCALE);
-
-  application = new Application(mainArgs);
+  application = container.resolve(Application);
+  application.takeInputs(mainArgs);
+  //application = new Application(mainArgs);
 }
 
 const handleError = (error: any) => {

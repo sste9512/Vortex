@@ -1,21 +1,12 @@
 /* eslint-disable max-lines-per-function */
-import {
-  setApplicationVersion,
-  setInstallType,
-  setInstanceId,
-  setWarnedAdmin,
-} from '../actions/app';
+import { setApplicationVersion, setInstanceId, setWarnedAdmin } from '../actions/app';
 import { NEXUS_DOMAIN } from '../extensions/nexus_integration/constants';
 import { STATE_BACKUP_PATH } from '../reducers/index';
 import { ThunkStore } from '../types/IExtensionContext';
 import type { IPresetStep, IPresetStepHydrateState } from '../types/IPreset';
 import { IState } from '../types/IState';
 import { getApplication } from '../util/application';
-import commandLine, {
-  IParameters,
-  ISetItem,
-  relaunch,
-} from '../util/commandLine';
+import commandLine, { IParameters, ISetItem, relaunch } from '../util/commandLine';
 import {
   DataInvalid,
   DocumentsPathMissing,
@@ -57,13 +48,7 @@ import {
   querySanitize,
 } from '../util/store';
 import SubPersistor from '../util/SubPersistor';
-import {
-  isMajorDowngrade,
-  replaceRecursive,
-  spawnSelf,
-  timeout,
-  truthy,
-} from '../util/util';
+import { isMajorDowngrade, replaceRecursive, spawnSelf, timeout, truthy } from '../util/util';
 
 import { addNotification, setCommandLine, showDialog } from '../actions';
 
@@ -73,15 +58,9 @@ import TrayIconT from './TrayIcon';
 
 import * as msgpackT from '@msgpack/msgpack';
 import BPromise from 'bluebird';
+import Bluebird from 'bluebird';
 import crashDumpT from 'crash-dump';
-import {
-  app,
-  crashReporter as crashReporterT,
-  dialog,
-  ipcMain,
-  protocol,
-  shell,
-} from 'electron';
+import { app, crashReporter as crashReporterT, dialog, ipcMain, protocol, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import * as _ from 'lodash';
 import * as os from 'os';
@@ -95,9 +74,14 @@ import { WindowAdminService } from '../window-admin-service';
 import { Result } from '../models/result';
 import { NodeLogging } from '../util/logfunctions';
 import isAdmin from 'is-admin';
-import Bluebird from 'bluebird';
 import { InstallationService } from '../installation-service';
 import { FileService } from '../file-service';
+import { IApplication } from './IApplication';
+import { injectable, injectWithTransform, singleton } from 'tsyringe';
+import Transform from 'tsyringe/dist/typings/types/transform';
+import * as Electron from 'electron';
+
+
 
 const uuid = lazyRequire<typeof uuidT>(() => require('uuid'));
 const permissions = lazyRequire<typeof permissionsT>(() =>
@@ -114,16 +98,27 @@ function last(array: any[]): any {
   return array[array.length - 1];
 }
 
-interface IApplication {
-  checkUpgrade(): BPromise<void>;
-
-  showMainWindow(startMinimized: boolean): void;
+export class WeakRefAccessor<T extends object> {
+     public getRef(reference: T){
+         return new WeakRef<T>(reference);
+     }
 }
+
+export class WeakRefTransformer<T extends object> implements Transform<WeakRefAccessor<T>, WeakRef<T>>{
+  transform(incoming: WeakRefAccessor<T>, args: any): WeakRef<T> {
+    return incoming.getRef(args);
+  }
+}
+
+
+
+
 
 /**
  * Represents the main Application class which initializes and manages the core functionalities
  * of the application, including setup, error handling, UI, and event management.
  */
+@singleton()
 class Application implements IApplication {
 
 
@@ -151,7 +146,11 @@ class Application implements IApplication {
   private splashScreenWeakRef: WeakRef<SplashScreenT>;
 
 
-  constructor(parameters: IParameters) {
+  constructor(parameters: IParameters, @injectWithTransform(WeakRefAccessor, WeakRefTransformer<Electron.App>, app) private appReference : Electron.App) {
+
+  }
+
+  public takeInputs (parameters: IParameters) {
     this.applicationArguments = parameters;
 
     // Initialize IPC event handlers
@@ -194,6 +193,7 @@ class Application implements IApplication {
    */
   public async cleanup(): Promise<void> {
     try {
+
       // Cleanup IPC main listener
       ipcMain.removeListener('show-window', this.onShowWindow);
 
@@ -244,11 +244,13 @@ class Application implements IApplication {
       // Close persistent stores or database
       //this.thunkStore?.dispatch(terminate());
     } catch (error) {
-      NodeLogging.printErrorAsGrid(
-        `Error during Application cleanup: ${error.message}`,
-      );
+      NodeLogging.printErrorAsGrid(`Error during Application cleanup: ${error.message}`);
     }
   }
+
+
+
+
 
   /**
    * Handles the event to show the main application window.
@@ -260,6 +262,9 @@ class Application implements IApplication {
   private onShowWindow(): void | undefined {
     return this.showMainWindow(this.applicationArguments?.startMinimized);
   }
+
+
+
 
   // Extracted helper methods
   private ensureRequiredDirectories(): Result<void> {
@@ -283,12 +288,19 @@ class Application implements IApplication {
     }
   }
 
+
+
+
+
   private getAndEnsureTempPath(): string {
     setVortexPath('temp', () => path.join(getVortexPath('userData'), 'temp'));
     const temporaryPath = getVortexPath('temp');
     fs.ensureDirSync(temporaryPath);
     return temporaryPath;
   }
+
+
+
 
   private initializeCrashReporting(): void {
     const temporaryPath = getVortexPath('temp');
@@ -455,6 +467,29 @@ class Application implements IApplication {
     contents.on('will-attach-webview', this.attachWebView);
   }
 
+  /**
+   * A function to configure and secure webview creation by modifying its webPreferences.
+   *
+   * This function ensures the webview is not created with potentially unsafe settings
+   * by removing the preload and preloadURL properties from the provided `webPreferences`.
+   * Additionally, it enforces `nodeIntegration` to be disabled for security reasons.
+   *
+   * @param {Electron.Event} event - The event object associated with the webview creation.
+   * @param webPreferences
+   * */
+  private attachWebView = (
+    event: Electron.Event,
+    webPreferences: Electron.WebPreferences & { preloadURL: string },
+  ) => {
+    // disallow creation of insecure webviews
+
+    delete webPreferences.preload;
+    delete webPreferences.preloadURL;
+
+    webPreferences.nodeIntegration = false;
+  };
+
+
   private handleAppSecondInstance(event: Event, secondaryArgv: string[]) {
     log('debug', 'getting arguments from second instance', secondaryArgv);
     this.applyArguments(commandLine(secondaryArgv, true));
@@ -515,27 +550,6 @@ class Application implements IApplication {
     }
   }
 
-  /**
-   * A function to configure and secure webview creation by modifying its webPreferences.
-   *
-   * This function ensures the webview is not created with potentially unsafe settings
-   * by removing the preload and preloadURL properties from the provided `webPreferences`.
-   * Additionally, it enforces `nodeIntegration` to be disabled for security reasons.
-   *
-   * @param {Electron.Event} event - The event object associated with the webview creation.
-   * @param webPreferences
-   * */
-  private attachWebView = (
-    event: Electron.Event,
-    webPreferences: Electron.WebPreferences & { preloadURL: string },
-  ) => {
-    // disallow creation of insecure webviews
-
-    delete webPreferences.preload;
-    delete webPreferences.preloadURL;
-
-    webPreferences.nodeIntegration = false;
-  };
 
   /**
    * Determines whether a given error should be ignored based on specific conditions.
@@ -652,28 +666,31 @@ class Application implements IApplication {
           splash = splashIn;
           return this.createStore(args.restore, args.merge).catch(
             DataInvalid,
-            err => {
-              log('error', 'store data invalid', err.message);
-              dialog
-                .showMessageBox(getVisibleWindow(), {
-                  type: 'error',
-                  buttons: ['Continue'],
-                  title: 'Error',
-                  message: 'Data corrupted',
-                  detail:
-                    'The application state which contains things like your Vortex ' +
-                    'settings, meta data about mods and other important data is ' +
-                    "corrupted and can't be read. This could be a result of " +
-                    'hard disk corruption, a power outage or something similar. ' +
-                    'Vortex will now try to repair the database, usually this ' +
-                    'should work fine but please check that settings, mod list and so ' +
-                    'on are ok before you deploy anything. ' +
-                    'If not, you can go to settings->workarounds and restore a backup ' +
-                    "which shouldn't lose you more than an hour of progress.",
-                })
-                .then(() => this.createStore(args.restore, args.merge, true));
-            },
+            onDataInvalidErrorHandler,
           );
+
+          function onDataInvalidErrorHandler(err: { message: any }) {
+            NodeLogging.printErrorAsGrid(err.message);
+            log('error', 'store data invalid', err.message);
+            dialog
+              .showMessageBox(getVisibleWindow(), {
+                type: 'error',
+                buttons: ['Continue'],
+                title: 'Error',
+                message: 'Data corrupted',
+                detail:
+                  'The application state which contains things like your Vortex ' +
+                  'settings, meta data about mods and other important data is ' +
+                  "corrupted and can't be read. This could be a result of " +
+                  'hard disk corruption, a power outage or something similar. ' +
+                  'Vortex will now try to repair the database, usually this ' +
+                  'should work fine but please check that settings, mod list and so ' +
+                  'on are ok before you deploy anything. ' +
+                  'If not, you can go to settings->workarounds and restore a backup ' +
+                  "which shouldn't lose you more than an hour of progress.",
+              })
+              .then(() => this.createStore(args.restore, args.merge, true));
+          }
         })
         .tap(() => log('debug', 'checking admin rights'))
         .then(() => this.warnAdmin())
@@ -1360,8 +1377,8 @@ class Application implements IApplication {
               actions: [
                 {
                   title: 'Restore',
-                  action: () => {
-                    this.thunkStore.dispatch(
+                  action: async () => {
+                    await this.thunkStore.dispatch(
                       showDialog(
                         'question',
                         'Restoring Application State',
@@ -1400,8 +1417,8 @@ class Application implements IApplication {
                 },
                 {
                   title: 'Delete',
-                  action: dismiss => {
-                    deleteBackups();
+                  action: async dismiss => {
+                    await deleteBackups();
                     dismiss();
                   },
                 },
