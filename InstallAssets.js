@@ -29,23 +29,26 @@ for (let spawn of data.spawn) {
   const cmdline = spawn.executable + ' ' + spawn.arguments.join(' ');
   const child = exec(spawn.executable + ' ' + spawn.arguments.join(' '), {
     stdio: [0, 1, 2],
-    env: Object.assign({}, process.env, spawn.env)
+    env: Object.assign({}, process.env, spawn.env),
   });
-  console.log('spawned', cmdline);
+  console.log(`[INFO] Spawned process: ${cmdline}`);
   child.stdout.on('data', (output) => {
-    console.log(spawn.executable, output);
+    console.log(`[STDOUT] ${spawn.executable}: ${output}`);
   });
   child.stderr.on('data', (output) => {
-    console.log('Error:', spawn.executable, output);
+    console.error(`[STDERR] Error in ${spawn.executable}: ${output}`);
   });
   child.on('close', (code) => {
     if (code !== 0) {
       status = 1;
+      console.error(`[ERROR] Process ${spawn.executable} exited with code ${code}`);
+    } else {
+      console.log(`[INFO] Process ${spawn.executable} finished successfully with code ${code}`);
     }
-    console.log('finished', spawn.executable, code);
   });
   childProcesses.push(spawn.executable);
   child.on('exit', () => {
+    console.log(`[INFO] Process ${spawn.executable} exited.`);
     childProcesses = childProcesses.filter((proc) => proc !== spawn.executable);
   });
 }
@@ -94,15 +97,22 @@ Promise.mapSeries(data.copy, file => {
       return fs
         .ensureDir(path.dirname(targetFile))
         .then(() => fs.copy(globResult, targetFile))
-        .then(() => {
-          console.log('copied', globResult, targetFile);
-        })
-        .catch(copyErr => {
-          console.log('failed to copy', globResult, targetFile, copyErr);
-        })
+        .then(() => ({
+          Status: 'Copied',
+          Source: globResult,
+          Target: targetFile,
+        }))
+        .catch(copyErr => ({
+          Status: 'Failed',
+          Source: globResult,
+          Target: targetFile,
+          Error: copyErr.message,
+        }))
         .finally(() => {
           --copies;
         });
+    }).then(results => {
+      console.table(results);
     }),
   );
 })
