@@ -1,25 +1,25 @@
-import rimraf from 'rimraf';
-import { glob, globStream } from 'glob';
-import { spawn } from 'child_process';
-import Promise from 'bluebird';
-import fs from 'fs';
-import minimist from 'minimist';
-import copyfiles from 'copyfiles';
-import path from 'path';
-import vm from 'vm';
-import { ProcessFeedback } from './ProcessFeedback.js';
-import { ConditionNotMet } from './ConditionNotMet.js';
-import { Unchanged } from './Unchanged.js';
-import { printErrorAsGrid, printSuccess } from './logfunctions.js';
-
-
+import rimraf from "rimraf";
+import { glob } from "glob";
+import { spawn } from "child_process";
+import Promise from "bluebird";
+import fs from "fs";
+import minimist from "minimist";
+import copyfiles from "copyfiles";
+import path from "path";
+import vm from "vm";
+import { ProcessFeedback } from "./ProcessFeedback.js";
+import { ConditionNotMet } from "./ConditionNotMet.js";
+import { Unchanged } from "./Unchanged.js";
+import { printErrorAsGrid, printSuccess } from "./logfunctions.js";
 
 const fileStream = fs;
 
 const fileStreamPromises = fs.promises;
-const projectGroups = JSON.parse(fileStream.readFileSync('BuildSubprojects.json', 'utf8'));
-const npmcli = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const yarncli = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
+const projectGroups = JSON.parse(
+  fileStream.readFileSync("BuildSubprojects.json", "utf8")
+);
+const npmcli = process.platform === "win32" ? "npm.cmd" : "npm";
+const yarncli = process.platform === "win32" ? "yarn.cmd" : "yarn";
 const useYarn = true;
 
 //const rebuild = path.join('node_modules', '.bin', process.platform === 'win32' ? 'electron-rebuild.cmd' : 'electron-rebuild');
@@ -29,15 +29,6 @@ const copyfilesAsync = Promise.promisify(copyfiles);
 const rimrafAsync = Promise.promisify(rimraf);
 const globAsync = Promise.promisify(glob.globStream);
 
-
-
-
-
-
-
-
-
-
 /**
  * Main entry point for the application. It processes command line arguments, sets up the environment,
  * and orchestrates project group processing.
@@ -46,52 +37,55 @@ const globAsync = Promise.promisify(glob.globStream);
  * @return {Promise<number>} A promise that resolves with 0 if the process completes successfully, or 1 if there is a failure.
  */
 function main(args) {
-
-
   if (args.length === 0) {
-    console.error('No command line parameters specified');
+    console.error("No command line parameters specified");
     return Promise.reject(1);
   }
 
-  const globalFeedback = new ProcessFeedback('global');
+  const globalFeedback = new ProcessFeedback("global");
   const buildType = args._[0];
-  printSuccess('Build Arguments:')
-  console.table(args)
+  printSuccess("Build Arguments:");
+  console.table(args);
   setupEnvironment(buildType);
 
   const buildStateFilePath = `./BuildState_${buildType}.json`;
   const buildState = loadBuildState(buildStateFilePath);
 
   const failed = false;
-  printSuccess("Starting to process projects")
-  console.table(projectGroups);
+  printSuccess("Starting to process projects");
+  const projectRows = [];
+  projectGroups.forEach((group, groupIndex) => {
+    if (Array.isArray(group)) {
+      group.forEach((project) => {
+        projectRows.push({
+          group: group.name || `Group ${groupIndex + 1}`,
+          name: project.name || "Unnamed Project",
+          path: project.path || "",
+        });
+      });
+    }
+  });
+  console.table(projectRows);
 
-  return Promise.each(projectGroups, projects =>
+  return Promise.each(projectGroups, (projects) =>
     processProjectGroup(
       projects,
       buildType,
       args,
       buildState,
       buildStateFilePath,
-      failed,
-    ),
+      failed
+    )
   ).then(() => (failed ? 1 : 0));
 }
-
-
-
 
 /**
  * Sets up the appropriate environment variables for the build type.
  * @param {string} buildType - The type of the build ('app', 'out', etc.).
  */
 function setupEnvironment(buildType) {
-  process.env.TARGET_ENV = buildType === 'app' ? 'production' : 'development';
+  process.env.TARGET_ENV = buildType === "app" ? "production" : "development";
 }
-
-
-
-
 
 /**
  * Loads the build state from a specified file, falling back to an empty object on error.
@@ -100,7 +94,7 @@ function setupEnvironment(buildType) {
  */
 function loadBuildState(filePath) {
   try {
-    let fileLines = fileStream.readFileSync(filePath, 'utf8');
+    let fileLines = fileStream.readFileSync(filePath, "utf8");
     return JSON.parse(fileLines);
   } catch {
     return {};
@@ -123,11 +117,11 @@ function processProjectGroup(
   args,
   buildState,
   buildStateFilePath,
-  failed,
+  failed
 ) {
   return Promise.map(
     projects,
-    project => {
+    (project) => {
       if (!shouldProcessProject(project, buildType)) {
         return Promise.resolve();
       }
@@ -140,15 +134,12 @@ function processProjectGroup(
         buildState,
         buildStateFilePath,
         feedback,
-        failed,
+        failed
       );
     },
-    { concurrency: 1 },
+    { concurrency: 1 }
   );
 }
-
-
-
 
 /**
  * Determines if a project should be processed based on variant or build type.
@@ -159,16 +150,10 @@ function processProjectGroup(
 function shouldProcessProject(project, buildType) {
   return (
     project.variant === undefined ||
-    buildType === 'out' ||
+    buildType === "out" ||
     process.env.VORTEX_VARIANT === project.variant
   );
 }
-
-
-
-
-
-
 
 /**
  * Processes an individual project: checks for changes, processes the project data, and handles errors.
@@ -188,7 +173,7 @@ function processSingleProject(
   buildState,
   buildStateFilePath,
   feedback,
-  hasFailed,
+  hasFailed
 ) {
   // Determine if changes should be forced
   function shouldForceChanges(project, cmdArgs, buildState) {
@@ -197,27 +182,29 @@ function processSingleProject(
 
   // Helper function to handle unchanged projects
   function rejectUnchanged(latestModificationTime, buildState, projectName) {
-    if (latestModificationTime !== undefined && latestModificationTime < buildState[projectName]) {
+    if (
+      latestModificationTime !== undefined &&
+      latestModificationTime < buildState[projectName]
+    ) {
       return Promise.reject(new Unchanged());
     }
     return Promise.resolve();
   }
 
   return changes(
-    project.path || '.',                    // Base path for changes
-    project.sources,                        // File patterns to monitor
-    shouldForceChanges(project, cmdArgs, buildState), // Force changes as required
+    project.path || ".", // Base path for changes
+    project.sources, // File patterns to monitor
+    shouldForceChanges(project, cmdArgs, buildState) // Force changes as required
   )
-    .then(latestModificationTime =>
-      rejectUnchanged(latestModificationTime, buildState, project.name),
+    .then((latestModificationTime) =>
+      rejectUnchanged(latestModificationTime, buildState, project.name)
     )
-    .then(() => processProject(project, buildType, feedback, cmdArgs.noparallel))
+    .then(() =>
+      processProject(project, buildType, feedback, cmdArgs.noparallel)
+    )
     .then(() => saveBuildState(buildState, buildStateFilePath, project.name))
-    .catch(err => handleProjectError(err, project, hasFailed));
+    .catch((err) => handleProjectError(err, project, hasFailed));
 }
-
-
-
 
 /**
  * Saves the updated build state to a file.
@@ -228,11 +215,11 @@ function processSingleProject(
  */
 function saveBuildState(buildState, filePath, projectName) {
   buildState[projectName] = Date.now();
-  return fileStreamPromises.writeFile(filePath, JSON.stringify(buildState, undefined, 2));
+  return fileStreamPromises.writeFile(
+    filePath,
+    JSON.stringify(buildState, undefined, 2)
+  );
 }
-
-
-
 
 /**
  * Handles errors encountered while processing a project.
@@ -243,21 +230,17 @@ function saveBuildState(buildState, filePath, projectName) {
 function handleProjectError(err, project, failed) {
   if (err instanceof Unchanged) {
     printErrorAsGrid(`No changes detected for ${project.name}`);
-    console.log('nothing to do', project.name);
+    console.log("nothing to do", project.name);
   } else if (err instanceof ConditionNotMet) {
     printErrorAsGrid(`Condition not met for ${project.name}`);
     console.log("condition wasn't met", project.name);
   } else {
     printErrorAsGrid(`Error processing ${project.name}: ${err.message}`);
     console.log(err.stack);
-    console.error('failed', project.name, err);
+    console.error("failed", project.name, err);
     failed = true;
   }
 }
-
-
-
-
 
 /**
  * Handles the output and events for a given child process.
@@ -269,10 +252,10 @@ function handleProjectError(err, project, failed) {
  * @param {Function} reject - The reject callback for the Promise.
  */
 function handleProcessOutput(proc, desc, logger, resolve, reject) {
-  proc.stdout.on('data', data => logger.log(data.toString()));
-  proc.stderr.on('data', data => logger.err(data.toString()));
-  proc.on('error', err => reject(err));
-  proc.on('close', code => {
+  proc.stdout.on("data", (data) => logger.log(data.toString()));
+  proc.stderr.on("data", (data) => logger.err(data.toString()));
+  proc.on("error", (err) => reject(err));
+  proc.on("close", (code) => {
     logger.finish(desc, code);
     if (code === 0) {
       resolve();
@@ -293,7 +276,7 @@ function handleProcessOutput(proc, desc, logger, resolve, reject) {
  */
 function spawnAsync(exe, args, options, logger) {
   return new Promise((resolve, reject) => {
-    const desc = `${options.cwd || '.'}/${exe} ${args.join(' ')}`;
+    const desc = `${options.cwd || "."}/${exe} ${args.join(" ")}`;
     printSuccess(`Starting: ${desc}`);
 
     const proc = spawn(exe, args, { ...options, shell: true });
@@ -301,23 +284,17 @@ function spawnAsync(exe, args, options, logger) {
   });
 }
 
-
-
-
 function npm(command, args, options, out) {
-  if (!useYarn && command === 'add') {
-    command = 'install';
+  if (!useYarn && command === "add") {
+    command = "install";
   }
   return spawnAsync(
     useYarn ? yarncli : npmcli,
-    [command, ...args, '--mutex', 'file'],
+    [command, ...args, "--mutex", "file"],
     options,
-    out,
+    out
   );
 }
-
-
-
 
 /**
  * Processes file patterns to determine the most recent modification time of the matched files.
@@ -336,16 +313,16 @@ function changes(basePath, patterns, force) {
   return Promise.reduce(
     patterns,
     (total, pattern) =>
-      globAsync(path.join(basePath, pattern), globOptions).then(files =>
-        [].concat(total, files),
+      globAsync(path.join(basePath, pattern), globOptions).then((files) =>
+        [].concat(total, files)
       ),
-    [],
+    []
   )
-    .map(filePath => fileStreamPromises.stat(filePath).then(stat => stat.mtime.getTime()))
-    .then(fileTimes => Math.max(...fileTimes));
+    .map((filePath) =>
+      fileStreamPromises.stat(filePath).then((stat) => stat.mtime.getTime())
+    )
+    .then((fileTimes) => Math.max(...fileTimes));
 }
-
-
 
 /**
  * Formats a string by replacing placeholders with corresponding values from the parameters object.
@@ -357,12 +334,9 @@ function changes(basePath, patterns, force) {
  */
 function format(fmt, parameters) {
   return fmt.replace(/{([a-zA-Z_]+)}/g, (match, key) => {
-    return typeof parameters[key] !== 'undefined' ? parameters[key] : match;
+    return typeof parameters[key] !== "undefined" ? parameters[key] : match;
   });
 }
-
-
-
 
 /**
  * Processes a project module by installing dependencies, building the project,
@@ -381,23 +355,20 @@ function processModule(project, buildType, feedback) {
   const npmOptions = { cwd };
 
   const buildTask = project.build
-    ? npm('install', [], { cwd: project.path }, feedback).then(() =>
+    ? npm("install", [], { cwd: project.path }, feedback).then(() =>
         npm(
-          'run',
-          [typeof project.build === 'string' ? project.build : 'build'],
+          "run",
+          [typeof project.build === "string" ? project.build : "build"],
           { cwd: project.path },
-          feedback,
-        ),
+          feedback
+        )
       )
     : Promise.resolve();
 
   return buildTask
     .then(() => rimrafAsync(modulePath))
-    .then(() => npm('add', [project.module], npmOptions, feedback));
+    .then(() => npm("add", [project.module], npmOptions, feedback));
 }
-
-
-
 
 /**
  * Constructs and returns the paths for the current working directory and the module directory
@@ -408,16 +379,14 @@ function processModule(project, buildType, feedback) {
  * @return {Object} An object containing `cwd` (current working directory path) and `modulePath` (module directory path).
  */
 function getModulePaths(buildType, moduleName) {
-  const cwd = buildType !== 'out' ? path.join(__dirname, buildType) : __dirname;
+  const cwd = buildType !== "out" ? path.join(__dirname, buildType) : __dirname;
   const modulePath = path.join(
-    buildType !== 'out' ? buildType : '',
-    'node_modules',
-    moduleName,
+    buildType !== "out" ? buildType : "",
+    "node_modules",
+    moduleName
   );
   return { cwd, modulePath };
 }
-
-
 
 /**
  * Updates the source map reference in a given file by modifying its sourceMappingURL pattern.
@@ -427,14 +396,14 @@ function getModulePaths(buildType, moduleName) {
  */
 async function updateSourceMap(filePath) {
   let fileContent = await fileStream.promises.readFile(filePath, {
-    encoding: 'utf8',
+    encoding: "utf8",
   });
 
   const moduleDirectoryName = path.basename(path.dirname(filePath));
 
   const updatedContent = fileContent.replace(
     /\/\/# sourceMappingURL=([a-z\-.]+\.js\.map)$/,
-    `//# sourceMappingURL=bundledPlugins/${moduleDirectoryName}/$1`,
+    `//# sourceMappingURL=bundledPlugins/${moduleDirectoryName}/$1`
   );
 
   await fileStream.promises.writeFile(filePath, updatedContent);
@@ -455,37 +424,37 @@ async function updateSourceMap(filePath) {
  */
 function processCustom(project, buildType, feedback, noparallel) {
   const buildStartTime = Date.now();
-  const installationArgs = noparallel ? ['--network-concurrency', '1'] : [];
+  const installationArgs = noparallel ? ["--network-concurrency", "1"] : [];
   let buildProcess = npm(
-    'install',
+    "install",
     installationArgs,
     { cwd: project.path },
-    feedback,
+    feedback
   ).then(() =>
     npm(
-      'run',
-      [typeof project.build === 'string' ? project.build : 'build'],
+      "run",
+      [typeof project.build === "string" ? project.build : "build"],
       { cwd: project.path },
-      feedback,
-    ),
+      feedback
+    )
   );
 
   if (project.copyTo !== undefined) {
-    const sourceFilesPattern = path.join(project.path, 'dist', '**', '*');
+    const sourceFilesPattern = path.join(project.path, "dist", "**", "*");
     const outputPath = format(project.copyTo, { BUILD_DIR: buildType });
-    printSuccess('Copying files', sourceFilesPattern, outputPath);
+    printSuccess("Copying files", sourceFilesPattern, outputPath);
 
     buildProcess = buildProcess
       .then(() =>
-        copyfilesAsync([sourceFilesPattern, outputPath], project.depth || 3),
+        copyfilesAsync([sourceFilesPattern, outputPath], project.depth || 3)
       )
-      .then(() => updateSourceMap(path.join(outputPath, 'index.js')));
+      .then(() => updateSourceMap(path.join(outputPath, "index.js")));
   }
 
   buildProcess = buildProcess.then(() => {
     const buildDurationInSeconds = (Date.now() - buildStartTime) / 1000;
     console.log(
-      `Project build at ${project.path} took ${buildDurationInSeconds} seconds`,
+      `Project build at ${project.path} took ${buildDurationInSeconds} seconds`
     );
   });
 
@@ -516,18 +485,18 @@ function processProject(project, buildType, feedback, noparallel) {
   if (!evalCondition(project.condition, { buildType })) {
     return Promise.reject(new ConditionNotMet());
   }
-  if (project.type === 'install-module') {
+  if (project.type === "install-module") {
     return processModule(project, buildType, feedback);
-  } else if (project.type === 'build-copy') {
+  } else if (project.type === "build-copy") {
     return processCustom(project, buildType, feedback, noparallel);
     // } else if (project.type === 'electron-rebuild') {
     //   return processRebuild(project, buildType, feedback);
   }
-  if (project.type.startsWith('_')) {
+  if (project.type.startsWith("_")) {
     return Promise.resolve();
   }
   return Promise.reject(
-    new Error('invalid project descriptor ' + project.toString()),
+    new Error("invalid project descriptor " + project.toString())
   );
 }
 
@@ -535,4 +504,4 @@ const args = minimist(process.argv.slice(2));
 main(args)
   // just run a second time, to repeat all failed builds
   .then(() => main(args))
-  .then(res => process.exit(res));
+  .then((res) => process.exit(res));
